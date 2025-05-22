@@ -1,14 +1,40 @@
 #include "routing.h"
 #include <stdint.h>
 #include <stdio.h>
+#include <stdbool.h>
+#include <stdlib.h>
+#include <string.h>
 #include <arpa/inet.h>
 
 
 static mtrie_node_t root_node;
 
-void bitmap_set_bit(uint32_t *bm, int index)
+void bitmap_set_bit(uint32_t *bm, uint32_t index)
 {
     *bm = *bm | (1U << index);
+}
+
+void bitmap_clr_bit(uint32_t *bm, uint32_t index)
+{
+    *bm = *bm & (~(1U << index));
+}
+
+void bitmap_set_bits(uint32_t *bm, uint32_t start, uint32_t end)
+{
+    uint32_t index;
+    for(index = start; index < end; index++)
+    {
+        *bm = *bm | (1U << index);
+    }
+}
+
+void bitmap_clr_bits(uint32_t *bm, uint32_t start, uint32_t end)
+{
+    uint32_t index;
+    for(index = start; index < end; index++)
+    {
+        *bm = *bm & (~(1U << index));
+    }
 }
 
 // now implement assuming value is always 32 bir=t wide, will have to update the 
@@ -46,14 +72,62 @@ uint32_t calculate_effective_prefix(uint32_t ip, uint16_t subnet_mask)
     return effective_prefix;
 }
 
-uint16_t match_effective_prefix(uint32_t dst_ip_int, uint32_t effective_prefix)
+uint16_t match_effective_prefix(uint32_t dst_ip_int, uint32_t effective_prefix, uint16_t prefix_len)
 {
+    uint16_t match_len = 0U;
+    uint16_t l_count = 31U;
+    uint16_t r_count = prefix_len;
+    bool l_value;
+    bool r_value;
 
+    do{
+        l_value = (dst_ip_int >> l_count) & 1U;
+        r_value = (effective_prefix >> r_count) & 1U;
+        l_count--;
+        r_count--;
+        match_len++;
+    }
+    while((l_value == r_value) && (l_count > 0U) && (r_count > 0U));
+
+    return match_len;
 }
 
-void split_mtrie_node(mtrie_node_t *current_node, mtrie_node_t *child_node1, mtrie_node_t *child_node2)
+void split_mtrie_node(mtrie_node_t *current_node, uint16_t match_len, uint32_t dst_ip, uint16_t dst_ip_mask, char *next_hop_ip, \
+     mtrie_node_t *child_node1, mtrie_node_t *child_node2)
 {
+    uint32_t effective_prefix_c;
+    uint32_t effective_prefix_c1;
+    uint32_t effective_prefix_c2;
+    /* for ex. dst_ip_mask is 32 and match_len is 16 s*/
+    effective_prefix_c = (current_node->prefix >> (dst_ip_mask - match_len));
+    effective_prefix_c1 = current_node->prefix;
+    bitmap_clr_bits(&effective_prefix_c1, (dst_ip_mask - match_len), dst_ip_mask);
+    effective_prefix_c2 = dst_ip;
+    bitmap_clr_bits(&effective_prefix_c2, (dst_ip_mask - match_len), dst_ip_mask);
 
+    /* child 1 */
+    bit_type_t child1 = get_msb(effective_prefix_c1, (dst_ip_mask - match_len));
+    current_node->child[child1] = child_node1;
+    child_node1->parent = current_node;
+    child_node1->prefix = effective_prefix_c1;
+    child_node1->prefix_len = dst_ip_mask - match_len;
+    child_node1->wildcard = ~child_node1->prefix_len;
+    memcpy(child_node1->data, current_node->data, 16U);
+
+    /* update current node */
+    current_node->data = NULL;
+    current_node->prefix = effective_prefix_c;
+    current_node->prefix_len = match_len;
+    current_node->wildcard = ~match_len;
+
+    /* child 2 */
+    bit_type_t child2 = get_msb(effective_prefix_c2, (dst_ip_mask - match_len));
+    current_node->child[child2] = child_node2;
+    child_node2->parent = current_node;
+    child_node2->prefix = effective_prefix_c2;
+    child_node2->prefix_len = dst_ip_mask - match_len;
+    child_node2->wildcard = ~child_node2->prefix_len;
+    memcpy(child_node2->data, next_hop_ip, 16U);
 }
 
 void init_routing_table(mtrie_node_t *root_node)
@@ -70,6 +144,8 @@ void init_routing_table(mtrie_node_t *root_node)
 
 void route_insert(mtrie_node_t *root_node, char *dest_ip_addr, uint16_t subnet_mask, char *next_hop_ip)
 {
+    mtrie_node_t *curr_node;
+
     /* convert the destination IP from presentation format to network format */
     uint32_t dst_ip_int;
     inet_pton(AF_INET, dest_ip_addr, &dst_ip_int);
@@ -83,8 +159,30 @@ void route_insert(mtrie_node_t *root_node, char *dest_ip_addr, uint16_t subnet_m
        If yes, check if there is a match */
     if(root_node->child[child_position] != NULL){
 
+        curr_node = root_node->child[child_position];
+        uint16_t match_length = match_effective_prefix(dst_ip_int, curr_node->prefix, curr_node->prefix_len);
+        if(match_length == 0U)
+        {
+            printf("%s: Undefined state\n", __FUNCTION__);
+        }
+        else{
+            mtrie_node_t *child_node1 = (mtrie_node_t *)calloc(1, sizeof(mtrie_node_t));
+            mtrie_node_t *child_node2 = (mtrie_node_t *)calloc(1, sizeof(mtrie_node_t));
+            split_mtrie_node(curr_node, match_length, dst_ip_int, subnet_mask, next_hop_ip, child_node1, child_node2);
+            printf("%s: Route Inserted\n", __FUNCTION__);
+        }
     }
-
+    else{
+        curr_node = (mtrie_node_t *)calloc(1, sizeof(mtrie_node_t));
+        /* link to root node */
+        root_node->child[child_position] = curr_node;
+        curr_node->parent = root_node;
+        /* set other parameters */
+        curr_node->prefix = dst_ip_int;
+        curr_node->prefix_len = subnet_mask;
+        curr_node->wildcard = ~subnet_mask;
+        memcpy(curr_node->data, next_hop_ip, 16);
+    }
 }
 
 unsigned int route_search_exactmatch(mtrie_node_t *root_node, uint32_t ip_addr, uint16_t subnet_mask)
