@@ -7,8 +7,6 @@
 #include <arpa/inet.h>
 
 
-static mtrie_node_t root_node;
-
 void bitmap_set_bit(uint32_t *bm, uint32_t index)
 {
     *bm = *bm | (1U << index);
@@ -43,8 +41,8 @@ bit_type_t get_msb(uint32_t effective_prefix, uint16_t prefix_len)
 {
     bit_type_t retval = BIT_TYPE_MAX;
 
-    if(prefix_len < 32U){
-        if((effective_prefix >> prefix_len) == 0){
+    if(prefix_len <= 32U){
+        if((effective_prefix >> (prefix_len -1U)) == 0){
             retval = ZERO;
         }
         else{
@@ -149,10 +147,14 @@ void route_insert(mtrie_node_t *root_node, char *dest_ip_addr, uint16_t subnet_m
     /* convert the destination IP from presentation format to network format */
     uint32_t dst_ip_int;
     inet_pton(AF_INET, dest_ip_addr, &dst_ip_int);
+    printf("%s: Network form of IP is %x\n", __FUNCTION__, dst_ip_int);
     dst_ip_int = htonl(dst_ip_int);
+    printf("%s: Host to network byte order changed IP is %x\n", __FUNCTION__, dst_ip_int);
+
 
     /* now check the MSB of the dst ip */
     bit_type_t child_position;
+    printf("%s: subnet mask is %u\n", __FUNCTION__, subnet_mask);
     child_position = get_msb(dst_ip_int, subnet_mask);
 
     /* check if the msb corresponding child branch exist 
@@ -166,13 +168,16 @@ void route_insert(mtrie_node_t *root_node, char *dest_ip_addr, uint16_t subnet_m
             printf("%s: Undefined state\n", __FUNCTION__);
         }
         else{
+            printf("%s: New route is to be inserted\n",__FUNCTION__);
             mtrie_node_t *child_node1 = (mtrie_node_t *)calloc(1, sizeof(mtrie_node_t));
             mtrie_node_t *child_node2 = (mtrie_node_t *)calloc(1, sizeof(mtrie_node_t));
             split_mtrie_node(curr_node, match_length, dst_ip_int, subnet_mask, next_hop_ip, child_node1, child_node2);
-            printf("%s: Route Inserted\n", __FUNCTION__);
+            printf("%s: Route Insertion Complete\n", __FUNCTION__);
         }
     }
     else{
+        printf("%s: No child exists to root node, create one\n", __FUNCTION__);
+        printf("%s: New node position is %u\n", __FUNCTION__, child_position);
         curr_node = (mtrie_node_t *)calloc(1, sizeof(mtrie_node_t));
         /* link to root node */
         root_node->child[child_position] = curr_node;
@@ -181,7 +186,8 @@ void route_insert(mtrie_node_t *root_node, char *dest_ip_addr, uint16_t subnet_m
         curr_node->prefix = dst_ip_int;
         curr_node->prefix_len = subnet_mask;
         curr_node->wildcard = ~subnet_mask;
-        memcpy(curr_node->data, next_hop_ip, 16);
+        strcpy((char *)&curr_node->data, next_hop_ip);
+        printf("%s: New child inserted at root node\n", __FUNCTION__);
     }
 }
 
@@ -202,4 +208,37 @@ unsigned int route_lookup_lpm(mtrie_node_t *root_node, uint32_t p_addr)
 void route_delete(mtrie_node_t *root_node, uint32_t ip_addr, uint16_t subnet_mask)
 {
 
+}
+
+void dump_routing_table(mtrie_node_t *root_node)
+{
+    mtrie_node_t *curr_node;
+    printf("\t%s: Printing routing table\n", __FUNCTION__);
+    if(root_node->child[ONE] != NULL)
+    {
+        printf("\t%s: Printing ONE branch\n", __FUNCTION__);
+        curr_node = root_node->child[ONE];
+        printf("\t%s: Route prefix is %x\n", curr_node->prefix);
+        printf("\t%s: Route prefix length is %x\n", curr_node->prefix_len);
+        printf("\t%s: Route wildcard is %x\n", curr_node->wildcard);
+        printf("\t%s: Next hop IP is %s\n", (char *)&curr_node->data);
+    }
+    if(root_node->child[ZERO] != NULL)
+    {
+        printf("\t%s: Printing ZERO branch\n", __FUNCTION__);
+        curr_node = root_node->child[ZERO];
+        printf("\t%s: Route prefix is %x\n", curr_node->prefix);
+        printf("\t%s: Route prefix length is %x\n", curr_node->prefix_len);
+        printf("\t%s: Route wildcard is %x\n", curr_node->wildcard);
+        printf("\t%s: Next hop IP is %s\n", (char *)&curr_node->data);
+    }
+    if(root_node->child[DONT_CARE] != NULL)
+    {
+        printf("\t%s: Printing DONT_CARE branch\n", __FUNCTION__);
+        curr_node = root_node->child[DONT_CARE];
+        printf("\t%s: Route prefix is %x\n", curr_node->prefix);
+        printf("\t%s: Route prefix length is %x\n", curr_node->prefix_len);
+        printf("\t%s: Route wildcard is %x\n", curr_node->wildcard);
+        printf("\t%s: Next hop IP is %s\n", (char *)&curr_node->data);
+    }
 }

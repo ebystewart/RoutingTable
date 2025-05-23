@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#define DEBUG
+
 typedef enum bit_type_{
     ZERO,
     ONE,
@@ -46,5 +48,7 @@ uint32_t route_search_exactmatch(mtrie_node_t *root_node, uint32_t ip_addr, uint
 uint32_t route_lookup_lpm(mtrie_node_t *root_node, uint32_t ip_addr);
 
 void route_delete(mtrie_node_t *root_node, uint32_t ip_addr, uint16_t subnet_mask);
+
+void dump_routing_table(mtrie_node_t *root_node);
 
 #endif
