@@ -3,7 +3,6 @@
 
 #include <stdint.h>
 
-#define DEBUG
 
 typedef enum bit_type_{
     ZERO,
@@ -37,7 +36,7 @@ uint16_t match_effective_prefix(uint32_t dst_ip_int, uint32_t effective_prefix, 
 void split_mtrie_node(mtrie_node_t *current_node, uint16_t match_len, uint32_t dst_ip, uint16_t dst_ip_mask, char *next_hop_ip, \
                     mtrie_node_t *child_node1, mtrie_node_t *child_node2);
 
-void init_routing_table(mtrie_node_t *root_node);
+mtrie_node_t *init_routing_table(void);
 
 void route_insert(mtrie_node_t *root_node, char *dest_ip_addr, uint16_t subnet_mask, char *next_hop_ip);
 
