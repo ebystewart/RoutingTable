@@ -9,7 +9,7 @@ int main(int argc, char **argv)
     char dst_ip[16];
     uint16_t dst_ip_mask;
     char next_hop_ip[16];
-    char arg;
+    char arg[30];
     if(argc <= 5U)
     {
         if (strcmp(argv[1],"-a") == 0U)
@@ -20,14 +20,19 @@ int main(int argc, char **argv)
             dst_ip_mask = atoi(argv[3]);// - '0';
             root_node = init_routing_table();
             route_insert(root_node, dst_ip, dst_ip_mask, next_hop_ip);
-            dump_routing_table(root_node);
         }
     }
     while(1)
     {
-        arg = getchar();
-        if(arg == '-'){
-
+        memset(arg, '\0', sizeof(arg));
+        printf("#router:> ");
+        fgets(arg, sizeof(arg), stdin);
+        printf("%s: The input is %s\n", __FUNCTION__, arg);
+        if(strncmp(arg,"--print", sizeof("--print"))){// To check logic
+            dump_routing_table(root_node);
+        }
+        else{
+            printf("Invalid argument %s\n", arg);
         }
     }
     return 0;
