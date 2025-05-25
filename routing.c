@@ -163,7 +163,7 @@ void route_insert(mtrie_node_t *root_node, char *dest_ip_addr, uint16_t subnet_m
     /* check if the msb corresponding child branch exist 
        If yes, check if there is a match */
     if(root_node->child[child_position] != NULL){
-        printf("%s: No child of root node exist\n", __FUNCTION__);
+        printf("%s: Child of root node exist\n", __FUNCTION__);
         curr_node = root_node->child[child_position];
         uint16_t match_length = match_effective_prefix(dst_ip_int, curr_node->prefix, curr_node->prefix_len);
         if(match_length == 0U)
@@ -202,10 +202,47 @@ unsigned int route_search_exactmatch(mtrie_node_t *root_node, uint32_t ip_addr, 
     return next_hop_ip;
 }
 
-unsigned int route_lookup_lpm(mtrie_node_t *root_node, uint32_t p_addr)
+unsigned int route_lookup_lpm(mtrie_node_t *root_node, uint32_t r_addr, uint16_t subnet_mask)
 {
     unsigned int next_hop_ip;
+    mtrie_node_t *curr_node;
 
+    /* convert the destination IP from presentation format to network format */
+    uint32_t dst_ip_int;
+    inet_pton(AF_INET, r_addr, &dst_ip_int);
+    printf("%s: Network form of IP is %x\n", __FUNCTION__, dst_ip_int);
+    dst_ip_int = htonl(dst_ip_int);
+    printf("%s: Host to network byte order changed IP is %x\n", __FUNCTION__, dst_ip_int);
+
+
+    /* now check the MSB of the dst ip */
+    bit_type_t child_position;
+    printf("%s: subnet mask is %u\n", __FUNCTION__, subnet_mask);
+    child_position = get_msb(dst_ip_int, subnet_mask);
+    printf("%s: New node position is %u\n", __FUNCTION__, child_position);
+
+    /* check if the msb corresponding child branch exist 
+       If yes, check if there is a match */
+    if(root_node->child[child_position] != NULL){
+        curr_node = root_node->child[child_position];
+        while(curr_node != NULL)
+        {
+            printf("%s: Child of root node exist\n", __FUNCTION__);
+            uint16_t match_length = match_effective_prefix(dst_ip_int, curr_node->prefix, curr_node->prefix_len);
+            if (match_length == 0U)
+            {
+                printf("%s: No match \n", __FUNCTION__);
+                return 0;
+            }
+            else /* match length between 1 and 32 */
+            {
+                printf("%s: New route is to be inserted\n", __FUNCTION__);
+                //child_position = get_msb(dst_ip_int, subnet_mask);
+                printf("%s: Route Insertion Complete\n", __FUNCTION__);
+            }
+            curr_node = curr_node->child[child_position];
+        }
+    }
     return next_hop_ip;
 }
 

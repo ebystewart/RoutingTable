@@ -44,7 +44,7 @@ void route_insert(mtrie_node_t *root_node, char *dest_ip_addr, uint16_t subnet_m
 uint32_t route_search_exactmatch(mtrie_node_t *root_node, uint32_t ip_addr, uint16_t subnet_mask);
 
 /* if a route is found, returns next hop ip in network format; else returns 0 */
-uint32_t route_lookup_lpm(mtrie_node_t *root_node, uint32_t ip_addr);
+uint32_t route_lookup_lpm(mtrie_node_t *root_node, uint32_t ip_addr, uint16_t subnet_mask);
 
 void route_delete(mtrie_node_t *root_node, uint32_t ip_addr, uint16_t subnet_mask);
 
