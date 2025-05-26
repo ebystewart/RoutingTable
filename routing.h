@@ -31,7 +31,7 @@ void bitmap_clr_bits(uint32_t *bm, uint32_t start, uint32_t end);
 
 uint32_t calculate_effective_prefix(uint32_t ip, uint16_t subnet_mask);
 
-uint16_t match_effective_prefix(uint32_t dst_ip_int, uint32_t effective_prefix, uint16_t prefix_len);
+uint16_t match_effective_prefix(uint32_t dst_ip_int, uint16_t dst_ip_mask, uint32_t effective_prefix, uint16_t prefix_len);
 
 void split_mtrie_node(mtrie_node_t *current_node, uint16_t match_len, uint32_t dst_ip, uint16_t dst_ip_mask, char *next_hop_ip, \
                     mtrie_node_t *child_node1, mtrie_node_t *child_node2);
@@ -44,7 +44,7 @@ void route_insert(mtrie_node_t *root_node, char *dest_ip_addr, uint16_t subnet_m
 uint32_t route_search_exactmatch(mtrie_node_t *root_node, uint32_t ip_addr, uint16_t subnet_mask);
 
 /* if a route is found, returns next hop ip in network format; else returns 0 */
-uint32_t route_lookup_lpm(mtrie_node_t *root_node, uint32_t ip_addr, uint16_t subnet_mask);
+uint32_t route_lookup_lpm(mtrie_node_t *root_node, char *ip_addr, uint16_t subnet_mask);
 
 void route_delete(mtrie_node_t *root_node, uint32_t ip_addr, uint16_t subnet_mask);
 

@@ -70,22 +70,23 @@ uint32_t calculate_effective_prefix(uint32_t ip, uint16_t subnet_mask)
     return effective_prefix;
 }
 
-uint16_t match_effective_prefix(uint32_t dst_ip_int, uint32_t effective_prefix, uint16_t prefix_len)
+uint16_t match_effective_prefix(uint32_t dst_ip_int, uint16_t dst_ip_mask, uint32_t effective_prefix, uint16_t prefix_len)
 {
     uint16_t match_len = 0U;
-    uint16_t l_count = 31U;
+    uint16_t l_count = dst_ip_mask - 1U;
     uint16_t r_count = prefix_len;
     bool l_value;
     bool r_value;
 
     do{
         l_value = (dst_ip_int >> l_count) & 1U;
-        r_value = (effective_prefix >> r_count) & 1U;
+        r_value = (effective_prefix >> l_count) & 1U;
         l_count--;
         r_count--;
         match_len++;
+        printf("%s: l_value %x, r_value %x, l_count %u, r_count %u, match_len %u\n", __FUNCTION__, l_value, r_value, l_count, r_count, match_len);
     }
-    while((l_value == r_value) && (l_count > 0U) && (r_count > 0U));
+    while((l_value == r_value) && (l_count <= r_count));
 
     return match_len;
 }
@@ -154,7 +155,6 @@ void route_insert(mtrie_node_t *root_node, char *dest_ip_addr, uint16_t subnet_m
     dst_ip_int = htonl(dst_ip_int);
     printf("%s: Host to network byte order changed IP is %x\n", __FUNCTION__, dst_ip_int);
 
-
     /* now check the MSB of the dst ip */
     bit_type_t child_position;
     printf("%s: subnet mask is %u\n", __FUNCTION__, subnet_mask);
@@ -165,7 +165,7 @@ void route_insert(mtrie_node_t *root_node, char *dest_ip_addr, uint16_t subnet_m
     if(root_node->child[child_position] != NULL){
         printf("%s: Child of root node exist\n", __FUNCTION__);
         curr_node = root_node->child[child_position];
-        uint16_t match_length = match_effective_prefix(dst_ip_int, curr_node->prefix, curr_node->prefix_len);
+        uint16_t match_length = match_effective_prefix(dst_ip_int, subnet_mask, curr_node->prefix, curr_node->prefix_len);
         if(match_length == 0U)
         {
             printf("%s: Undefined state\n", __FUNCTION__);
@@ -180,7 +180,6 @@ void route_insert(mtrie_node_t *root_node, char *dest_ip_addr, uint16_t subnet_m
     }
     else{
         printf("%s: No child exists to root node, create one\n", __FUNCTION__);
-        printf("%s: New node position is %u\n", __FUNCTION__, child_position);
         curr_node = (mtrie_node_t *)calloc(1, sizeof(mtrie_node_t));
         printf("%s: child node created @ %x\n", __FUNCTION__, curr_node);
         /* link to root node */
@@ -191,7 +190,7 @@ void route_insert(mtrie_node_t *root_node, char *dest_ip_addr, uint16_t subnet_m
         curr_node->prefix_len = subnet_mask;
         bitmap_clr_bits(&curr_node->wildcard, (32U - subnet_mask), 31U);
         strcpy((char *)&curr_node->data, next_hop_ip);
-        printf("%s: New child inserted at root node\n", __FUNCTION__);
+        printf("%s: New child inserted at root node for next hop IP %s\n", __FUNCTION__, (char *)&curr_node->data);
     }
 }
 
@@ -202,7 +201,7 @@ unsigned int route_search_exactmatch(mtrie_node_t *root_node, uint32_t ip_addr, 
     return next_hop_ip;
 }
 
-unsigned int route_lookup_lpm(mtrie_node_t *root_node, uint32_t r_addr, uint16_t subnet_mask)
+unsigned int route_lookup_lpm(mtrie_node_t *root_node, char *r_addr, uint16_t subnet_mask)
 {
     unsigned int next_hop_ip;
     mtrie_node_t *curr_node;
@@ -214,35 +213,42 @@ unsigned int route_lookup_lpm(mtrie_node_t *root_node, uint32_t r_addr, uint16_t
     dst_ip_int = htonl(dst_ip_int);
     printf("%s: Host to network byte order changed IP is %x\n", __FUNCTION__, dst_ip_int);
 
-
     /* now check the MSB of the dst ip */
     bit_type_t child_position;
+    uint16_t match_length = 32U;
     printf("%s: subnet mask is %u\n", __FUNCTION__, subnet_mask);
     child_position = get_msb(dst_ip_int, subnet_mask);
     printf("%s: New node position is %u\n", __FUNCTION__, child_position);
+
+    uint32_t dst_ip_int_progressive = dst_ip_int;
+    uint16_t subnet_mask_progressive = subnet_mask;
+    uint16_t lpm_length = 0U;;
 
     /* check if the msb corresponding child branch exist 
        If yes, check if there is a match */
     if(root_node->child[child_position] != NULL){
         curr_node = root_node->child[child_position];
-        while(curr_node != NULL)
+        while((curr_node != NULL) && (match_length > 0U))
         {
             printf("%s: Child of root node exist\n", __FUNCTION__);
-            uint16_t match_length = match_effective_prefix(dst_ip_int, curr_node->prefix, curr_node->prefix_len);
-            if (match_length == 0U)
-            {
-                printf("%s: No match \n", __FUNCTION__);
-                return 0;
-            }
-            else /* match length between 1 and 32 */
-            {
-                printf("%s: New route is to be inserted\n", __FUNCTION__);
-                //child_position = get_msb(dst_ip_int, subnet_mask);
-                printf("%s: Route Insertion Complete\n", __FUNCTION__);
-            }
+            match_length = match_effective_prefix(dst_ip_int_progressive, subnet_mask_progressive, curr_node->prefix, curr_node->prefix_len);
+            /* ignore the matched part and look for the remaining */
+            dst_ip_int_progressive = dst_ip_int_progressive >> match_length;
+            subnet_mask_progressive = subnet_mask_progressive - match_length;
+            lpm_length += match_length;
+
+            printf("%s: match length is %u\n", __FUNCTION__, match_length);
+            printf("%s: dst_ip_int_progressive is %x\n", __FUNCTION__, dst_ip_int_progressive);
+            printf("%s: subnet_mask_progressive is %u\n", __FUNCTION__, subnet_mask_progressive);
+            printf("%s: lpm_length is %u\n", __FUNCTION__, lpm_length);
+
+            printf("%s: Move to the next node, with the remaining part of IP and subnet\n", __FUNCTION__);
+            child_position = get_msb(dst_ip_int_progressive, subnet_mask_progressive);
+                
             curr_node = curr_node->child[child_position];
         }
-    }
+    }   
+    printf("%s: Longest Prefix matched is %u\n", __FUNCTION__, lpm_length);
     return next_hop_ip;
 }
 
